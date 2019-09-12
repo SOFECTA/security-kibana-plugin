@@ -83,7 +83,7 @@ app.controller('securityEditInternalUsersController', function ($scope, $element
                     } else {
                         $scope.resourcename = $scope.resourcename + " (COPY)";
                         $scope.isNew = true;
-                        delete($scope.resource.readonly);
+                        delete($scope.resource.reserved);
                     }
                 });
         } else {
@@ -103,13 +103,18 @@ app.controller('securityEditInternalUsersController', function ($scope, $element
 
         const form = $element.find('form[name="objectForm"]');
 
+        if ($scope.isNew && $scope.resourcename.length < 3) {
+            $scope.errorMessage = 'Username needs to have at least 3 characters.';
+            return;
+        }
+
         if ($scope.isNew && $scope.resourcenames.indexOf($scope.resourcename) != -1) {
             $scope.errorMessage = 'Username already exists, please choose another one.';
             return;
         }
 
-        if ($scope.resourcename.indexOf(".") != -1 || $scope.resourcename.indexOf("*") != -1) {
-            $scope.errorMessage = "Username must not contain '.' or '*'";
+        if ($scope.resourcename.indexOf("*") != -1) {
+            $scope.errorMessage = "Username must not contain '*'";
             return;
         }
 
@@ -123,25 +128,22 @@ app.controller('securityEditInternalUsersController', function ($scope, $element
             return;
         }
 
-        if($scope.isNew) {
-            if ($scope.resource.password.length < 5) {
-                $scope.errorMessage = 'Passwords must be at least 5 characters.';
-                return;
-            }
-
-        } else {
+        if(! $scope.isNew) {
             if ($scope.resource.password.trim().length == 0) {
                 $scope.resource.passwordConfirmation = "";
             }
         }
-
 
         if ($scope.resource.password !== $scope.resource.passwordConfirmation) {
             $scope.errorMessage = 'Passwords do not match.';
             return;
         }
 
-        $scope.service.save($scope.resourcename, $scope.resource).then(() => kbnUrl.change(`/internalusers/`));
+        $scope.service.save($scope.resourcename, $scope.resource)
+          .then(
+            () => kbnUrl.change(`/internalusers/`),
+            (error) => {$scope.errorMessage = error.data.message}
+          );
 
         $scope.errorMessage = null;
 

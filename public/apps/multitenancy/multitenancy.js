@@ -40,6 +40,9 @@ import 'plugins/opendistro_security/apps/configuration/configuration.less';
 
 import tenantTemplate from './multitenancy.html';
 
+// import { chromeWrapper} from "/Users/agamansi/kibana-dev/kibana-extra/security-kibana-plugin/public/services/chrome_wrapper";
+import { chromeWrapper } from "../../services/chrome_wrapper";
+
 uiRoutes.enable();
 
 uiRoutes
@@ -91,6 +94,7 @@ uiModules
 
         this.GLOBAL_USER_LABEL = "Global";
         this.GLOBAL_USER_VALUE = "";
+        this.GLOBAL_USER_VISIBLE = true;
         this.GLOBAL_USER_WRITEABLE = true;
         this.PRIVATE_USER_LABEL = "Private";
         this.PRIVATE_USER_VALUE = "__user__";
@@ -107,7 +111,7 @@ uiModules
                 // both ES and KI side
                 var mtinfo = response.data;
 
-                this.GLOBAL_USER_WRITEABLE = (!mtinfo.kibana_index_readonly && ! this.userHasDashboardOnlyRole);
+                // this.GLOBAL_USER_WRITEABLE = (!mtinfo.kibana_index_readonly && ! this.userHasDashboardOnlyRole);
 
                 if(!mtinfo.kibana_mt_enabled) {
                     this.errorMessage = "It seems that the Multitenancy module is not installed on your Elasticsearch cluster, or it is disabled. Multitenancy will not work, please check your installation.";
@@ -130,7 +134,7 @@ uiModules
             {
                 toastNotifications.addDanger({
                     title: 'Unable to load multitenancy info.',
-                    text: error.message,
+                    text: error.data.message,
                 });
             }
         );
@@ -143,6 +147,19 @@ uiModules
                 this.username = response.data.user_name;
                 var allTenants = response.data.tenants;
                 delete allTenants[this.username];
+
+                // delete the global_tenant for the moment. We fall back the GLOBAL until
+                // RBAC is rolled out completely.
+                if(response.data.tenants.hasOwnProperty("global_tenant") && this.globalEnabled) {
+                    this.GLOBAL_USER_WRITEABLE = response.data.tenants.global_tenant && !this.userHasDashboardOnlyRole;
+                    this.GLOBAL_USER_VISIBLE = true;
+                } else {
+                    // global_tenant not available in tenant list, needs to be
+                    // removed from UI display as well
+                    this.GLOBAL_USER_WRITEABLE = false;
+                    this.GLOBAL_USER_VISIBLE = false;
+                }
+                delete response.data.tenants["global_tenant"];
 
                 // sort tenants by putting the keys in an array first
                 var tenantkeys = [];
@@ -168,7 +185,7 @@ uiModules
                     },
                     (error) => {
                         toastNotifications.addDanger({
-                            text: error.message,
+                            text: error.data.message,
                         });
                     }
                 );
@@ -177,7 +194,7 @@ uiModules
             {
                 toastNotifications.addDanger({
                     title: 'Unable to load authentication info.',
-                    text: error.message,
+                    text: error.data.message,
                 });
             }
         );
@@ -189,10 +206,16 @@ uiModules
                     this.tenantLabel = "Active tenant: " + resolveTenantName(response.data, this.username);
                     this.currentTenant = response.data;
                     // clear lastUrls from nav links to avoid not found errors
-                    chrome.getNavLinkById("kibana:visualize").lastSubUrl = chrome.getNavLinkById("kibana:visualize").url;
-                    chrome.getNavLinkById("kibana:dashboard").lastSubUrl = chrome.getNavLinkById("kibana:dashboard").url;
-                    chrome.getNavLinkById("kibana:discover").lastSubUrl = chrome.getNavLinkById("kibana:discover").url;
-                    chrome.getNavLinkById("timelion").lastSubUrl = chrome.getNavLinkById("timelion").url;
+                    const appsToReset = ['kibana:visualize', 'kibana:dashboard', 'kibana:discover', 'timelion'];
+                    chromeWrapper.getNavLinks().forEach((navLink) => {
+                        if (appsToReset.indexOf(navLink.id) > -1) {
+                            chromeWrapper.resetLastSubUrl(navLink.id);
+                        }
+                    });  
+                    
+                    if(chrome.getInjected("timelion.ui.enabled")) {
+                        chromeWrapper.getNavLinkById("timelion").lastSubUrl = chromeWrapper.getNavLinkById("timelion").url;
+                    }
                     // clear last sub urls, but leave our own items intouched. Take safe mutation approach.
                     var lastSubUrls = [];
                     for (var i = 0; i < sessionStorage.length; i++) {
@@ -210,10 +233,10 @@ uiModules
                     // redirect to either Visualize or Dashboard depending on user selection.
                     if(redirect) {
                         if (redirect == 'vis') {
-                            $window.location.href = chrome.getNavLinkById("kibana:visualize").url;
+                            $window.location.href = chromeWrapper.getNavLinkById("kibana:visualize").url;
                         }
                         if (redirect == 'dash') {
-                            $window.location.href = chrome.getNavLinkById("kibana:dashboard").url;
+                            $window.location.href = chromeWrapper.getNavLinkById("kibana:dashboard").url;
                         }
                     } else {
                         toastNotifications.addSuccess({
@@ -236,7 +259,7 @@ uiModules
                 (error) =>
                 {
                     toastNotifications.addDanger({
-                        text: error.message
+                        text: error.data.message
                     });
                 }
             );
